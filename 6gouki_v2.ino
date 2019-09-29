@@ -397,14 +397,14 @@ void go_Feedback(int goal_angle, int move_time, int speed)
 
 //消去アルゴリズム
 void do_erase_all(){
-//
-//  //(0)まず、何往復かを特定
-//  int i;
-//  int num_of_roundtrip =3;
-//  //num_of_roundtrip = measure_vertical_length(89, 20000);
-//  drive_motors(255,0);
-//  delay(100);
-//  set_angle(2);
+
+  //(0)まず、何往復かを特定
+  int i;
+  int num_of_roundtrip;
+  num_of_roundtrip = measure_vertical_length(89, 20000);
+  drive_motors(255,0);
+  delay(100);
+  set_angle(2);
 
   //(1)次にnum_of_roundtrip分だけ往復運動を左上から開始
   go_Feedback(0, 10000, 250);
