@@ -21,13 +21,13 @@
 #define SPEED_H 0.18        //ロボットの水平に進む速さ[mm/ms]、HorizontalのH
 #define SPEED_V 0.10        //ロボットの上に進む速さ[mm/ms]、VerticalのV
 #define ACmeter_count 100   //過去何回分の加速度センサーの値の平均値を信用ある値として使うか
-#define STOP_ANGLE_THRESHOLD 10    //set_angleでの許容幅
+#define STOP_ANGLE_THRESHOLD 0.5    //set_angleでの許容幅
 #define MOVE_ANGLE_THRESHOLD 0.1  //go_ForwardTurnでの許容幅（これを超えると進みながら曲がる）
 
 //set_angleのパラメータ：
-#define SET_ANGLE_SPEED 170 //回転速度の設定
-#define E1 5 //5
-#define E0 7   // 10          //移動時間の設定：keep(E1*abs(d_angle) + E0)
+#define SET_ANGLE_SPEED 255 //回転速度の設定
+#define E1 5
+#define E0 10              //移動時間の設定：keep(E1*abs(d_angle) + E0)
 
 //go_Forward_Feedbackのパラメータ：
 #define FORWARD_SPEED 255   //直進速度、3Vは75くらい
@@ -36,15 +36,15 @@
 #define FORWARD_DELAY 5     //移動時間の設定。向いている方向が正しければ "3*FORWARD_DELAY" ms進む、ずれていれば "FORWARD_DELAY" ms進む
 
 //go_Backward_Feedbackのパラメータ：
-#define BACK_SPEED 150 //255
+#define BACK_SPEED 255
 //#define D1 2
 //#define D0 1
 #define BACK_DELAY 3
 
 // PID制御のパラメータ  e0 = d_angle; u = Kp*e0 + Ki*(e0+e1+e2) + Kd*(e0-e1);
-#define Kp 4 //4.25
-#define Ki 1  //1
-#define Kd 0
+#define Kp 4.25
+#define Ki 1
+#define Kd 4
 
 float gForceX, gForceY, gForceZ; //↑を重力加速度の何倍か、に変換した値
 
@@ -52,7 +52,7 @@ float current_angle; //現在の機体が向いている方向。前はmoving_an
 
 
 //測距センサ
-#define BUF_SIZE 8
+#define BUF_SIZE 10
 #define SOKKYO_THRESHOLD 0.075
 float voltage_buf[BUF_SIZE] = {};
 int buf_counter = 0;
@@ -289,13 +289,17 @@ void go_Forward_Feedback(int goal_angle, int move_time) //前に進む、フィ�
       mean_of_tmp_voltage = sum_of_tmp_voltage / 500;
       voltage_buf[buf_counter] = mean_of_tmp_voltage;
       buf_counter++;
-      if (buf_counter == BUF_SIZE){
-        buf_counter = 0;
-      }
       if (buf_cnt < BUF_SIZE){
         buf_cnt++;
-      } 
-      if (buf_cnt == BUF_SIZE){
+        //buf_flag = 1;
+      } else{
+        buf_flag = 1;
+      }
+      if (buf_counter == BUF_SIZE){
+        buf_counter = 0;
+        //buf_flag = 1;
+      }
+      if (buf_flag == 1 && buf_cnt ==BUF_SIZE){
         //Serial.print("電圧 mean_of_tmp_voltage: ");
         //Serial.print(mean_of_tmp_voltage);
         //Serial.print("   ");
@@ -378,34 +382,6 @@ void go_Back_Feedback(int goal_angle, int move_time) //後ろに進む、フィ�
   while(time_count < move_time){
     float d_angle = calculate_d_angle(goal_angle);
 
-      //測距センサ
-      int tmp_val = 0;
-      float tmp_voltage = 0.0;
-      float sum_of_tmp_voltage = 0.0;
-      float mean_of_tmp_voltage = 0.0;
-
-      //Serial.print("buf_counter = ");
-      //Serial.print(buf_counter);
-      //Serial.print("   ");
-
-      digitalWrite(13, LOW);
-      for (int i = 0; i<100; i++){
-        tmp_val = analogRead(A2);
-        tmp_voltage = (tmp_val / 1024.0)*5;
-        sum_of_tmp_voltage += tmp_voltage;
-      }
-      mean_of_tmp_voltage = sum_of_tmp_voltage / 100.0;
-      Serial.println(mean_of_tmp_voltage);
-        if (mean_of_tmp_voltage < 4.6 || mean_of_tmp_voltage > 6){
-          stop_Stop();
-          //Serial.println("距離が変わりました");
-          buf_cnt = 0;
-          buf_flag = 0;
-          digitalWrite(13, HIGH);  //シリアル通信しない時の確認用にLEDを点灯させる
-          //delay(150);
-          break;
-        }
-        
     //以降、d_angleを0に収束させるフィードバック制御：
     if(abs(d_angle)>45){  //あまりに違う方向を向いている場合はその場で回転して角度を修正
       set_angle(goal_angle);
@@ -503,33 +479,6 @@ void do_erase(){
 }
 
 
-//消去アルゴリズム
-//ターンせずに消す
-//上下方向
-void do_erase_vertical(){
-  go_Forward_Feedback(180, 20000);//0,20000
-  go_Back_Feedback(0, 20);
-  drive_motors(100,255);
-  go_Back_Feedback(90,20000);
-  delay(100);
-  for(int i=0;i<7;i++){
-    go_Forward_Feedback(90,20000); //上にまっすぐ進む。int goal_angle, int move_time
-
-    //一列左にずれながら下に消す
-    drive_motors(-70,-255);
-    delay(500);
-    drive_motors(-255,-70);
-    delay(400);
-    go_Back_Feedback(90,20000);  //140
-    
-  }
-  go_Forward_Feedback(90,2000);
-  //go_Back_Feedback(90,10);
-  drive_motors(255,150);
-  
-}
-
-
 /**************加速度センサのため*************/
 void setupMMA8452() {
   // シリアルポートを9600 bps[ビット/秒]で初期化
@@ -579,22 +528,16 @@ void setup()
 }
 
 void test() {
- //Serial.println(analogRead(A0));
-//  set_angle(90);
-//  go_Forward_Feedback(90,1000);
-//  set_angle(90);
-//  go_Back_Feedback(90,50);
-//  set_angle(270);
-//  go_Back_Feedback(270,1000);
-//  set_angle(270);
-//  go_Forward_Feedback(270,50);
+  set_angle(90);
+  go_Forward_Feedback(90,1000);
+  set_angle(90);
+  go_Back_Feedback(90,50);
+  set_angle(270);
+  go_Back_Feedback(270,1000);
+  set_angle(270);
+  go_Forward_Feedback(270,50);
   
-    go_Back_Feedback(270, 10000);
-    drive_motors(255,0);
-    delay(200);
-    go_Back_Feedback(90, 10000);
-    drive_motors(150,255);
-    delay(300);
+//  go_Back_Feedback(90, 10000);
 //  go_Forward_Feedback(90, 10000);
   //drive_motors(200,200);
   //drive_motors(150,0);
@@ -605,12 +548,10 @@ void test() {
 
 
 void loop(){
-  //do_erase();
-  //do_erase_parallel();
-  //do_erase_vertical();
+  do_erase();
   //set_angle(0);
   //go_Back_Feedback(0, 100);
-  test();
+//  test();
 //  go_Forward_Feedback(0, 1000);  //デモ動画用
 //  go_Back_Feedback(0, 450);
   //getAngle();
